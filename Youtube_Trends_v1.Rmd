@@ -1,0 +1,269 @@
+---
+title: "Youtube US Trends"
+author : "Pradeep Adhokshaja"
+date : "18th January 2022"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+    theme: 
+      version: 4
+      
+      navbar-bg : "#FF0000"
+      
+      base_font: 
+        google: Prompt
+
+      heading_font:
+        google: Sen
+      code_font:
+        google: 
+          # arguments to sass::font_google() 
+          family: JetBrains Mono
+          local: false 
+      bootswatch: minty 
+---
+
+```{r setup, include=FALSE,echo=FALSE,message=FALSE,warning=FALSE}
+
+library(flexdashboard)
+library(tidyverse)
+csv_files <- list.files()
+list_ <- grepl('.csv',list.files())
+csv_files <- csv_files[list_]
+
+master_data <- data.frame()
+for(csv_ in csv_files){
+  
+  data_ <- read.csv(csv_)
+  data_$country <- csv_
+  master_data <- master_data %>% rbind(data_)
+}
+
+### Change Countries 
+
+master_data %>%
+  mutate(country = stringr::str_remove(country,"videos.csv")) -> master_data
+
+### Getting Categories
+
+library(jsonlite)
+
+
+list_ <- grepl('json',list.files())
+
+json_files <- list.files()[list_]
+
+category_ <- data.frame()
+
+for(json_ in json_files){
+  
+  data_ <- jsonlite::fromJSON(json_)
+  data_ <- data_$items
+  data_frame <- data.frame(id=data_$id,category=data_$snippet$title,country = stringr::str_remove(json_,'_category_id.json') )
+  category_ <- category_ %>% rbind(data_frame)
+  
+}
+
+master_data %>%
+  rename(id = category_id) %>%
+  mutate(id = as.character(id)) %>%
+  full_join(category_) -> master_data
+
+master_data$trending_date <- lubridate::ydm(master_data$trending_date)
+master_data$publish_time <- lubridate::ymd_hms(master_data$publish_time)
+master_data$publish_date <- lubridate::date(master_data$publish_time)
+
+master_data$time_taken_to_trend <- lubridate::as.period(master_data$trending_date - master_data$publish_date, unit = "days")
+master_data$time_taken_to_trend_num <- as.numeric(master_data$time_taken_to_trend)/(24*60*60)
+```
+
+
+### Number of Trending Videos by Category 
+
+```{r echo=FALSE,comment=FALSE,message=FALSE}
+
+master_data %>%
+  filter(country=='US') %>%
+  select(video_id,category) %>%
+  unique() %>%
+  group_by(category) %>%
+  summarise(`Number of Videos`=n()) %>%
+  ungroup() %>%
+  mutate(category=reorder(category,-`Number of Videos`)) %>%
+  ggplot(aes(x=category,y=`Number of Videos`))+geom_bar(stat='identity',fill='#FF0000')+
+  ggthemes::theme_economist()+
+  theme(axis.text.x = element_text(angle=90,vjust=1),axis.ticks = element_blank(),axis.title = element_text(hjust=0.5),plot.title=element_text(hjust=0.5,size=10),axis.text.y = element_text(size=6)) -> p_number_of_videos
+
+
+plotly::ggplotly(p_number_of_videos)
+
+
+
+
+
+
+
+
+```
+
+***
+
+* <b> Most videos (63%) that have gone trending, are related to entertainment, music, and DIY tutorials and news. These are subjects that usually capture the attention of the audience.</b>
+
+
+
+### Comment Rate By Video Category {data-commentary-width=400}
+
+```{r echo=FALSE,comment=FALSE,message=FALSE}
+
+master_data %>%
+  filter(country=='US') %>%
+  group_by(country,category) %>%
+  summarise(
+    
+    like_rate = sum(likes,na.rm=TRUE)/sum(views,na.rm=TRUE),
+    comment_rate = sum(comment_count,na.rm=TRUE)/sum(views,na.rm=TRUE),
+    dislike_rate = sum(dislikes,na.rm=TRUE)/sum(views,na.rm=TRUE)
+     ) %>%
+  na.omit() %>% ungroup() %>%
+  tidyr::gather(type,value,3:5) %>%
+  arrange(desc(value)) %>% 
+  filter(type=='comment_rate') %>%
+  mutate(category = reorder(category,-value)) %>%
+  rename(`Comment Rate`=value) %>%
+  ggplot(aes(x=category,y=`Comment Rate`))+
+  geom_bar(stat='identity',show.legend = FALSE,fill='#FF0000')+
+  #geom_text(aes(label=stringr::str_c(as.character(round(value*100,2)),'%')), vjust=-0.5,angle=45,hjust=-0.1,size=2.5)+
+  ggthemes::theme_economist()+
+  theme(axis.text.x = element_text(angle=90,vjust=1),axis.ticks = element_blank(),axis.title = element_text(hjust=0.5),plot.title=element_text(hjust=0.5,size=10),axis.text.y = element_text(size=6))+
+  ggplot2::scale_y_continuous(labels=scales::percent,limits = c(0,0.035))+labs(x='Categories',y='Comment Rate\n',title='Comment Rate (Comments/Views) by \n Categories in the US')-> p_comment_rate
+
+plotly::ggplotly(p_comment_rate)
+
+
+
+
+```
+
+***
+
+* <b>Videos related to Non-Profits and Activism tend to have 5X the comment rate than average. This could be due to controversial/polarized opinions of users</b>
+
+* <b>Autos and Vehicles tend to attract the least engagement rate (0.1%).</b>
+
+
+
+
+
+
+### Average Number of Days taken to go to trending by category {data-commentary-width=400}
+
+```{r}
+
+master_data %>%
+  filter(country=='US') %>%
+  select(video_id,time_taken_to_trend_num,country,category) %>%
+  na.omit() %>%
+  group_by(video_id,category,country) %>%
+  summarise(time_taken_to_trend_num = min(time_taken_to_trend_num,na.rm=TRUE)) %>%
+  ungroup() %>%
+  group_by(country,category) %>%
+  summarise(avg_time_taken = mean(time_taken_to_trend_num,na.rm=TRUE)) %>%
+  mutate(category = reorder(category,-avg_time_taken)) %>%
+  rename(`Avg Number of Days Taken`= avg_time_taken) %>%
+  ggplot(aes(x=category,y=`Avg Number of Days Taken`))+
+  geom_bar(stat='identity',fill='#FF0000')+ggthemes::theme_economist(base_family = 'sans')+
+  #geom_text(aes(label=stringr::str_c(as.character(round(avg_time_taken,1)))), vjust=-0.5,angle=45,hjust=-0.1)+
+  theme(axis.text.x = element_text(angle=90,vjust=0.1),axis.ticks = element_blank(),
+        plot.title=element_text(hjust=0.5,size=10),axis.text.y  = element_blank(),axis.title.x = element_text(size=15))+
+  labs(x='Video Category',y='Days',title='Average number of days taken to get to trending')+
+  ylim(c(0,150))-> p_avg_number_of_days_to_trending
+
+plotly::ggplotly(p_avg_number_of_days_to_trending)
+
+
+```
+
+
+***
+
+* <b>Videos related to animals,non profits and activism , travel and DIY tend to reach trending page < 1 week.</b>
+* <b>Educational and consumer related videos tend to take a longer time to reach trending page.</b>
+
+
+### Average number of days each video category remaining trending {data-commentary-width=400}
+
+```{r}
+
+master_data %>%
+  filter(country=='US') %>%
+  select(trending_date,video_id,category) %>%
+  unique() %>%
+  group_by(category,video_id) %>%
+  summarise(n=n()) %>%
+  ungroup() %>%
+  group_by(category) %>%
+  summarise(avg_trend = mean(n,na.rm=TRUE)) %>%
+  ungroup() %>%
+  arrange(desc(avg_trend)) %>%
+  mutate(category = reorder(category,-avg_trend)) %>%
+  rename(`Average Number of Days`= avg_trend) %>%
+  ggplot(aes(x=category,y=`Average Number of Days`))+geom_bar(stat='identity',fill='#FF0000')+
+  ggthemes::theme_economist()+
+  theme(axis.text.x = element_text(angle=90,vjust=0.1),axis.ticks = element_blank(),
+        plot.title=element_text(hjust=0.5,size=10),axis.text.y  = element_blank(),axis.title.x = element_text(size=15))+
+  #geom_text(aes(label=stringr::str_c(as.character(round(avg_trend,1)))), vjust=0,angle=45,hjust=-0.1)+
+  labs(x='Video Category',y='Days \n',title='Average number of days for which each type of video category \n remains trending')+
+  ylim(c(0,17)) -> p_avg_number_of_days_trending
+
+plotly::ggplotly(p_avg_number_of_days_trending)
+
+
+```
+
+***
+* <b>Visually captivating video genres such as music, gaming, film tend to remain trending for a longer time on average.</b>
+
+* <b> Personal video categories such as video blogging (vlogging) tend to remain trending for a shorter time.</b>
+
+
+
+
+### Top tags per Video Category {data-commentary-width=400}
+
+```{r}
+
+master_data %>%
+  filter(country=='US') %>%
+  select(video_id,tags,category,views,trending_date) %>%
+  unique() %>%
+  tidytext::unnest_tokens(word,tags) %>%
+  filter(word !='-',!word %in% tidytext::stop_words$word) %>%
+  mutate(word = gsub("[[:punct:]]", "", word)) %>%
+  mutate(word = gsub('[0-9]+', '', word)) %>%
+  mutate(word = ifelse(nchar(word)>1,word,'')) %>%
+  filter(word !='') %>%
+  filter(word !='ft') %>%
+  filter(word !=' ') %>%
+  filter(!word %in% c('youtube','video','travel','events','news','trailer','random','official','movie','funny')) %>%
+  filter(!word %in% tolower(unique(master_data$category))) %>%
+  mutate(category = gsub('Entertainment',"Entertain ment",category)) %>%
+  mutate(category = gsub(" ",'\n',category)) %>%
+  group_by(word,category) %>%
+  summarise(views=sum(views,na.rm = TRUE)) %>%
+  arrange(desc(views)) %>%
+  ungroup() %>%
+  arrange(desc(views)) %>%
+  group_by(category) %>%
+  slice(1:5)  %>%
+  mutate(word = tidytext::reorder_within(word, views, category)) %>%
+  ggplot(aes(x=word,y=views))+geom_bar(stat='identity',fill='#FF0000')+facet_grid(.~category,scales = "free_x")+ggthemes::theme_economist()+
+  theme(axis.text.x = element_text(angle=90,size=7),axis.text.y = element_text(size=6),strip.text.x = element_text(size=8),plot.title=element_text(hjust=0.5,size=10),axis.ticks = element_blank())+scale_y_continuous(labels = scales::unit_format(unit = "B", scale = 1e-9))+
+  labs(x='Top Words', y='Views in Billions \n',title = "")+tidytext::scale_x_reordered() -> p_top_tags
+
+plotly::ggplotly(p_top_tags)
+
+```
+
+
+
