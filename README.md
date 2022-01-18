@@ -1,4 +1,4 @@
-# US-Youtube-Trends-using-flexboard
+# US-Youtube-Trends-using-flexdashboard
 Flexdashboard using US Youtube data from Kaggle
 The Data can be found here : https://www.kaggle.com/datasnaek/youtube-new
 
