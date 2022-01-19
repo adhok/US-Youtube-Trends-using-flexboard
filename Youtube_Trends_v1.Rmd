@@ -3,12 +3,14 @@ title: "Youtube US Trends"
 author : "Pradeep Adhokshaja"
 date : "18th January 2022"
 output: 
+  
   flexdashboard::flex_dashboard:
+    source_code : "https://github.com/adhok/US-Youtube-Trends-using-flexboard"
     storyboard: true
     theme: 
       version: 4
       
-      navbar-bg : "#FF0000"
+      navbar-bg : "#232323"
       
       base_font: 
         google: Prompt
@@ -17,7 +19,6 @@ output:
         google: Sen
       code_font:
         google: 
-          # arguments to sass::font_google() 
           family: JetBrains Mono
           local: false 
       bootswatch: minty 
@@ -168,7 +169,7 @@ master_data %>%
   summarise(time_taken_to_trend_num = min(time_taken_to_trend_num,na.rm=TRUE)) %>%
   ungroup() %>%
   group_by(country,category) %>%
-  summarise(avg_time_taken = mean(time_taken_to_trend_num,na.rm=TRUE)) %>%
+  summarise(avg_time_taken = round(mean(time_taken_to_trend_num,na.rm=TRUE),0)) %>%
   mutate(category = reorder(category,-avg_time_taken)) %>%
   rename(`Avg Number of Days Taken`= avg_time_taken) %>%
   ggplot(aes(x=category,y=`Avg Number of Days Taken`))+
@@ -203,7 +204,7 @@ master_data %>%
   summarise(n=n()) %>%
   ungroup() %>%
   group_by(category) %>%
-  summarise(avg_trend = mean(n,na.rm=TRUE)) %>%
+  summarise(avg_trend = round(mean(n,na.rm=TRUE),0)) %>%
   ungroup() %>%
   arrange(desc(avg_trend)) %>%
   mutate(category = reorder(category,-avg_trend)) %>%
@@ -229,7 +230,7 @@ plotly::ggplotly(p_avg_number_of_days_trending)
 
 
 
-### Top tags per Video Category {data-commentary-width=400}
+### Top 8 tags per Video Category {data-commentary-width=400}
 
 ```{r}
 
@@ -255,7 +256,7 @@ master_data %>%
   ungroup() %>%
   arrange(desc(views)) %>%
   group_by(category) %>%
-  slice(1:5)  %>%
+  slice(1:8)  %>%
   mutate(word = tidytext::reorder_within(word, views, category)) %>%
   ggplot(aes(x=word,y=views))+geom_bar(stat='identity',fill='#FF0000')+facet_grid(.~category,scales = "free_x")+ggthemes::theme_economist()+
   theme(axis.text.x = element_text(angle=90,size=7),axis.text.y = element_text(size=6),strip.text.x = element_text(size=8),plot.title=element_text(hjust=0.5,size=10),axis.ticks = element_blank())+scale_y_continuous(labels = scales::unit_format(unit = "B", scale = 1e-9))+
